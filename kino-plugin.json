@@ -1,7 +1,7 @@
 {
-  "id": "okru-play",
+  "id": "okru",
   "name": "OK.RU Videos",
-  "version": "1.0.0",
+  "version": "1.0.4",
   "apiVersion": 4,
   "entry": "plugin.js",
   "description": "Buscador y reproductor de Ok.ru",
