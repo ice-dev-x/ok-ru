@@ -1,7 +1,7 @@
 {
   "id": "okru",
   "name": "OK.RU Videos",
-  "version": "1.0.4",
+  "version": "1.0.6",
   "apiVersion": 4,
   "entry": "plugin.js",
   "description": "Buscador y reproductor de Ok.ru",
@@ -14,5 +14,8 @@
     "*.mycdn.me",
     "*.vkuservideo.net",
     "html.duckduckgo.com"
-  ]
+  ],
+  
+  "color": "#035453",
+  "icon": "icon.png"
 }
