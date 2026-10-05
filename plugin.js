@@ -1,5 +1,7 @@
 const BASE_URL = "https://ok.ru";
+const MI_COOKIE = "_statid=e4320cec-91a3-4fd9-90b0-97c964465f52; bci=-7470853437255611506; viewport=728; _touch=false; _hover=true; __dzbd=false; JSESSIONID=bf8bf0444eca572f43c58e985f45484b8a6294c56e29cd79.5ad553a4; AUTHCODE=k74-geeajErSe7qJY7qny_6Y-q733qFrp_9Vtgow6IjymKe2sqquXONX-vLIJCQxfBQfPeqk-vO8BAB5fYDoDIKvtkq-RwG_UMqjQZWtTBsTnXDDCD63RpbtVohduRWQYva68j5A1328y3Krsg_5; LASTSRV=ok.ru; vdt=3W70uX+Laou5C/9kJIciduUonrcxJziSUCcVdzVC0NAAAABoQqwqXkpXU7N6ynurQbfgx481HQ2Mc8VyRwdDodr71qnRQnJkegGrb89c7G9Qh7JZQkxmAo2uJv35JYT3Nz+4Bs09k6XQgTzqTIgBC/4c8pmR3zoWLgEPQOGALK1DmtjHma53ZgA=; msg_conf=2468555756792551; theme_mode=LIGHT; TZ=-10; CDN=; cudr=0; klos=0; ENVOY_JSESSIONID=\"70019a6209b08850\"; _okAtTraceIds=\"70019a6209b08850\"; _breakpoint=S; __last_online=1791213995240; TZD=-10.2117; TD=2117";
 
+// --- UTILIDADES ---
 function cleanText(text) {
   if (!text) return "";
   return text
@@ -8,12 +10,10 @@ function cleanText(text) {
     .trim();
 }
 
-// Función genérica para extraer tarjetas de video del código fuente de ok.ru
 function extractItems(html, limit = 30) {
   const items = [];
   const vistos = new Set();
   
-  // OK.ru suele agrupar los videos en contenedores con enlaces href="/video/12345"
   const regex = /<a[^>]+href=["'](\/video\/\d+)["'][^>]*>([\s\S]*?)<\/a>/gi;
   let match;
 
@@ -23,19 +23,16 @@ function extractItems(html, limit = 30) {
     
     const inner = match[2];
     
-    // Buscar el título del video (suele estar en el atributo alt, title o aria-label de la imagen)
     const titleMatch = inner.match(/(?:alt|title|aria-label)=["']([^"']+)["']/i) || 
                        inner.match(/<div[^>]*class="[^"]*title[^"]*"[^>]*>([^<]+)<\/div>/i);
     let title = titleMatch ? titleMatch[1].trim() : "";
 
-    // Buscar la portada del video
     const imgMatch = inner.match(/src=["']([^"']+)["']/i) || 
                      inner.match(/background-image:\s*url\(['"]?([^'")]+)['"]?\)/i);
     let poster = imgMatch ? imgMatch[1] : "";
     
     if (poster && poster.startsWith("//")) poster = "https:" + poster;
 
-    // Solo agregar si detectó al menos un título y una imagen válida
     if (title && poster && !poster.includes("gif")) {
       vistos.add(link);
       items.push({
@@ -50,22 +47,25 @@ function extractItems(html, limit = 30) {
   return items;
 }
 
+// --- 1. HOME (Categorías desde OK.RU) ---
 export async function home() {
   const fetchPage = async (path) => {
     try {
       const res = await kino.fetch(`${BASE_URL}${path}`, { 
-        headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" } 
+        headers: { 
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+          "Cookie": MI_COOKIE
+        } 
       });
       if (!res.ok) return "";
       return await res.text();
     } catch (e) { return ""; }
   };
 
-  // Extraer de las secciones públicas principales de ok.ru/video
   const htmlTop    = await fetchPage("/video/top");
   const htmlMovies = await fetchPage("/video/movies");
   const htmlShows  = await fetchPage("/video/shows");
-
+  
   const topItems    = extractItems(htmlTop, 20);
   const movieItems  = extractItems(htmlMovies, 20);
   const showItems   = extractItems(htmlShows, 20);
@@ -78,78 +78,13 @@ export async function home() {
   return categories;
 }
 
+// --- 2. SEARCH (Vacío para evitar bloqueos y mantener el plugin limpio) ---
 export async function search(query) {
-  const searchTerm = (query && query.q) ? encodeURIComponent(query.q) : "";
-  if (!searchTerm) return [];
-
-  const url = `https://html.duckduckgo.com/html/?q=site:ok.ru/video+${searchTerm}`;
-  console.log("🔎 Buscando a través de DuckDuckGo...");
-  
-  try {
-    const res = await kino.fetch(url, { 
-      headers: { 
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-        "Accept-Language": "es-ES,es;q=0.9"
-      } 
-    });
-    
-    if (!res.ok) return [];
-    const html = await res.text();
-    
-    const items = [];
-    const vistos = new Set();
-    
-    // Atrapamos TODOS los enlaces de la página de DuckDuckGo
-    const links = html.match(/<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi);
-    
-    if (links) {
-      for (const linkHtml of links) {
-        const hrefMatch = linkHtml.match(/href="([^"]+)"/i);
-        if (!hrefMatch) continue;
-        let href = hrefMatch[1];
-        
-        // DuckDuckGo oculta los links originales en una redirección (uddg=...). Lo decodificamos.
-        if (href.includes('uddg=')) {
-          try { href = decodeURIComponent(href.split('uddg=')[1].split('&')[0]); } catch(e){}
-        }
-        
-        // Si el link final es un video de OK.RU, lo procesamos
-        const idMatch = href.match(/ok\.ru\/video\/(\d+)/i);
-        if (idMatch) {
-          const videoId = idMatch[1];
-          // Limpiamos el título quitando etiquetas HTML (como <b> o <span>)
-          let title = linkHtml.replace(/<[^>]+>/g, "").trim();
-          
-          // Filtramos para evitar meter los links de "texto plano" como si fueran títulos
-          if (title.length > 5 && !title.includes('ok.ru/video') && !title.startsWith('http')) {
-            if (!vistos.has(videoId)) {
-              vistos.add(videoId);
-              items.push({
-                id: "okru-" + videoId,
-                ref: "https://ok.ru/video/" + videoId,
-                // Limpiamos el sufijo "| Odnoklassniki" si aparece
-                title: title.replace(/\|?\s*Odnoklassniki/i, "").replace(/\|?\s*OK\.RU/i, "").trim(),
-                poster: "https://via.placeholder.com/300x450/ff9900/ffffff?text=Video+OK.RU",
-                kind: "movie"
-              });
-            }
-          }
-        }
-      }
-    }
-    
-    console.log(`✅ ¡ÉXITO! Se encontraron ${items.length} resultados.`);
-    // Si llegase a dar 0, imprimimos un pedacito del HTML para ver si DDG nos bloqueó
-    if (items.length === 0) {
-      console.log("⚠️ HTML de prueba:", html.substring(0, 300));
-    }
-    
-    return items; 
-  } catch (err) {
-    console.log("Error general:", err);
-    return [];
-  }
+  await null;
+  return [];
 }
+
+// --- 3. RESOLVE (Reproductor de alta compatibilidad) ---
 export async function resolve(ref) {
   await null;
   try {
@@ -180,49 +115,21 @@ export async function resolve(ref) {
     const data = JSON.parse(jsonStr);
     const flashvars = data.flashvars || data;
 
-    // A veces 'metadata' es un string JSON que hay que parsear, a veces ya es un objeto.
     let metaObj = flashvars.metadata;
     if (typeof metaObj === "string") {
       try { metaObj = JSON.parse(metaObj); } catch (e) { }
     }
 
-    // 1. Buscar HLS (.m3u8) en metaObj
     if (metaObj) {
-      if (metaObj.ondemandHls) {
-        return {
-          url: metaObj.ondemandHls,
-          headers: { "User-Agent": "Mozilla/5.0", "Referer": embedUrl }
-        };
-      }
-      if (metaObj.hlsManifestUrl) {
-        return {
-          url: metaObj.hlsManifestUrl,
-          headers: { "User-Agent": "Mozilla/5.0", "Referer": embedUrl }
-        };
-      }
-      if (metaObj.videos && Array.isArray(metaObj.videos) && metaObj.videos.length > 0) {
-        return {
-          url: metaObj.videos[0].url,
-          headers: { "User-Agent": "Mozilla/5.0", "Referer": embedUrl }
-        };
-      }
+      if (metaObj.ondemandHls) return { url: metaObj.ondemandHls, headers: { "User-Agent": "Mozilla/5.0", "Referer": embedUrl } };
+      if (metaObj.hlsManifestUrl) return { url: metaObj.hlsManifestUrl, headers: { "User-Agent": "Mozilla/5.0", "Referer": embedUrl } };
+      if (metaObj.videos && Array.isArray(metaObj.videos) && metaObj.videos.length > 0) return { url: metaObj.videos[0].url, headers: { "User-Agent": "Mozilla/5.0", "Referer": embedUrl } };
     }
 
-    // 2. Fallbacks históricos en la raíz de flashvars
-    if (flashvars.metadataUrl) {
-      return {
-        url: flashvars.metadataUrl,
-        headers: { "User-Agent": "Mozilla/5.0", "Referer": embedUrl }
-      };
-    }
-    if (flashvars.hlsManifestUrl) {
-      return {
-        url: flashvars.hlsManifestUrl,
-        headers: { "User-Agent": "Mozilla/5.0", "Referer": embedUrl }
-      };
-    }
+    if (flashvars.metadataUrl) return { url: flashvars.metadataUrl, headers: { "User-Agent": "Mozilla/5.0", "Referer": embedUrl } };
+    if (flashvars.hlsManifestUrl) return { url: flashvars.hlsManifestUrl, headers: { "User-Agent": "Mozilla/5.0", "Referer": embedUrl } };
 
-    throw new Error("No se encontraron enlaces de video válidos en el código fuente.");
+    throw new Error("No se encontraron enlaces de video válidos.");
   } catch (e) {
     throw new Error(String(e));
   }

@@ -1,19 +1,18 @@
 {
   "id": "okru",
   "name": "OK.RU Videos",
-  "version": "1.0.7",
+  "version": "1.0.9",
   "apiVersion": 4,
   "entry": "plugin.js",
   "description": "Buscador y reproductor de Ok.ru",
   "author": "ice-dev-x",
   "streamHosts": "any",
   "capabilities": ["home", "search", "resolve"],
-  "hosts": [
+"hosts": [
     "ok.ru",
     "*.ok.ru",
     "*.mycdn.me",
-    "*.vkuservideo.net",
-    "html.duckduckgo.com"
+    "*.vkuservideo.net"
   ],
   
   "color": "#035453",
